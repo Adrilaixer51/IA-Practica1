@@ -1,0 +1,92 @@
+### Bibliotecas básicas de gestión de datos
+import pandas as pd
+import numpy as np
+
+### Bibliotecas gráficas
+import matplotlib.pyplot as plt
+import seaborn as sns 
+import plotly as py
+import plotly.figure_factory as ff
+import plotly.graph_objs as go
+from plotly.offline import download_plotlyjs, init_notebook_mode, plot, iplot
+# Using plotly + cufflinks in offline mode
+import cufflinks as cf
+cf.set_config_file(offline=True)
+import cufflinks
+cufflinks.go_offline(connected=True)
+
+
+########################################################
+### Para un flujo de trabajo más rápido, las bibliotecas de Interpretabilidad
+### se instalarán/cargarán sobre la marcha del tutorial
+########################################################
+
+### Add-ons adicionales
+import warnings
+warnings.filterwarnings('ignore')
+plt.style.use('fivethirtyeight')
+# %matplotlib inline
+
+df = pd.read_csv(r"C:\Users\Adrián\OneDrive\Documentos\VisualsProyects\csv-Actividad1\vehiculos-de-segunda-mano-sample.csv")
+df.head()
+df.tail()  
+
+
+df.info()
+
+df.describe()
+
+print("Número de filas y columnas del dataset: \n", df.shape)
+
+print("Los valores faltantes de cada varible son: \n", df.isnull().sum())
+
+print(df)
+
+print("----------------------------------------------------------------------------------------------------------")
+
+copia1 = df.copy()
+
+copia1.info()
+
+# 1. Dimensiones del DataFrame
+dimensiones = copia1.shape
+print(dimensiones)
+
+# 2. Primeras filas del DataFrame
+primeras_filas = copia1.head()
+print(primeras_filas)
+
+# 3. Información general sobre las columnas y tipos de datos
+info_general = copia1.info()
+print(info_general)
+
+# 4. Descripción estadística de las columnas numéricas
+descripcion_estadistica = copia1.describe()
+print(descripcion_estadistica)
+
+
+# Configuración de estilo
+#plt.style.use('seaborn-darkgrid')
+
+# Crear figuras para las gráficas
+fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+
+# 1. Histograma de 'kms'
+sns.histplot(copia1['kms'].dropna(), bins=25, ax=axes[0, 0], color='skyblue')
+axes[0, 0].set_title('Distribución de Kilómetros Recorridos (kms)')
+
+# 2. Histograma de 'price'
+sns.histplot(copia1['price'], bins=25, ax=axes[0, 1], color='salmon')
+axes[0, 1].set_title('Distribución de Precios de Vehículos')
+
+# 3. Boxplot de 'kms' (para identificar outliers)
+sns.boxplot(x=copia1['kms'], ax=axes[1, 0], color='lightgreen')
+axes[1, 0].set_title('Boxplot de Kilómetros Recorridos (kms)')
+
+# 4. Boxplot de 'price' (para identificar outliers)
+sns.boxplot(x=copia1['price'], ax=axes[1, 1], color='lightcoral')
+axes[1, 1].set_title('Boxplot de Precios de Vehículos')
+
+# Ajustar el layout para que no se solapen las gráficas
+plt.tight_layout()
+plt.show()
