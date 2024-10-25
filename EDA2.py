@@ -75,13 +75,36 @@ plt.xlabel("Kilometraje")
 plt.ylabel("Precio")
 plt.show()
 
+# Relación entre Año de Fabricación y Precio
+plt.figure(num="Dispersión Año-Precio", figsize=(8,6))
+sns.scatterplot(x=df['year'], y=df['price'])
+plt.title("Relación entre Año de Fabricación y Precio")
+plt.xlabel("Año de Fabricación")
+plt.ylabel("Precio")
+plt.show()
+
+# Relación entre Ubicación y Precio (solo si tiene relevancia)
+plt.figure(num="Distribución Precio por Ubicación", figsize=(12, 6))
+sns.boxplot(x='location', y='price', data=df, order=df['location'].value_counts().index[:10])
+plt.title("Distribución de Precio por Ubicación (Top 10)")
+plt.xlabel("Ubicación")
+plt.ylabel("Precio")
+plt.xticks(rotation=45)
+plt.show()
+
+# Relación entre Marca y Precio
+plt.figure(num="Distribución Precio por Marca", figsize=(12, 6))
+sns.boxplot(x='make', y='price', data=df, order=df['make'].value_counts().index[:10])
+plt.title("Distribución de Precio por Marca (Top 10)")
+plt.xlabel("Marca")
+plt.ylabel("Precio")
+plt.xticks(rotation=45)
+plt.show()
+
+
 # Gráfico de pares para analizar varias variables al mismo tiempo
 sns.pairplot(df[['price', 'kms', 'year']])
 plt.show()
-
-import pandas as pd
-import seaborn as sns
-import matplotlib.pyplot as plt
 
 # Hacer One-Hot Encoding de las variables categóricas
 df_encoded = pd.get_dummies(df, columns=['doors', 'color'], drop_first=True)
