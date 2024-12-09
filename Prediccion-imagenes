@@ -1,0 +1,136 @@
+import os
+import pandas as pd
+import numpy as np
+import cv2
+import tensorflow as tf
+from tensorflow.keras import layers, models
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder
+
+# Función para obtener la ruta relativa al directorio del script
+def get_relative_path(file_name):
+    return os.path.join(os.path.dirname(__file__), file_name)
+
+# 1. Leer el CSV (usando una ruta relativa)
+csv_path = get_relative_path('pokemonDB_dataset.csv')
+if os.path.exists(csv_path):
+    pokemon_data = pd.read_csv(csv_path)
+    print("CSV cargado con éxito. Primeros registros:")
+    print(pokemon_data.head())
+else:
+    raise FileNotFoundError(f"La ruta del archivo CSV no existe: {csv_path}")
+
+# 2. Procesar Imágenes (usando una ruta relativa)
+image_dir = get_relative_path('Pokemon images DB')
+img_size = (498, 501)  # Tamaño estándar para las imágenes
+images = []
+labels = []
+
+# Verificar que la ruta de las imágenes existe
+if os.path.exists(image_dir):
+    print(f"Ruta válida para las imágenes: {image_dir}")
+else:
+    raise FileNotFoundError(f"La ruta especificada para las imágenes no existe: {image_dir}")
+
+# Extensiones válidas para imágenes
+valid_extensions = (".jpg", ".jpeg", ".png")
+
+# Inicialización del contador
+total_images = 0
+failed_images = 0
+
+# Función para cargar imágenes y etiquetas recursivamente
+def load_images_and_labels(base_path):
+    global total_images, failed_images
+    for root, dirs, files in os.walk(base_path):  # Recorrer todas las subcarpetas
+        folder_name = os.path.basename(root)
+        if folder_name != os.path.basename(base_path):  # Ignorar la carpeta principal
+            # Filtrar imágenes válidas
+            img_files = [f for f in files if f.lower().endswith(valid_extensions)]
+            if len(img_files) >= 2:  # Asegurarse de tener al menos 2 imágenes
+                for img_file in img_files:
+                    img_path = os.path.join(root, img_file)
+                    print(f"Procesando: {img_path}")  # Para verificar rutas
+                    try:
+                        # Leer imagen
+                        img = cv2.imread(img_path)
+                        if img is None:
+                            print(f"Advertencia: La imagen no se pudo cargar - {img_path}")
+                            failed_images += 1  # Incrementar contador de fallos
+                        else:
+                            # Redimensionar imagen
+                            img_resized = cv2.resize(img, img_size)
+                            images.append(img_resized)
+                            labels.append(folder_name)  # Usar el nombre de la carpeta como etiqueta
+                            total_images += 1  # Incrementar contador de imágenes cargadas correctamente
+                    except Exception as e:
+                        print(f"Error cargando imagen {img_path}: {e}")
+                        failed_images += 1  # Incrementar contador de fallos
+
+# Llamar a la función para cargar imágenes
+load_images_and_labels(image_dir)
+
+# Mostrar estadísticas sobre las imágenes cargadas
+print(f"\nTotal de imágenes procesadas: {total_images}")
+print(f"Total de imágenes que no se pudieron cargar: {failed_images}")
+
+# Verificar que se cargaron imágenes y etiquetas
+if len(images) == 0 or len(labels) == 0:
+    raise ValueError("No se han cargado imágenes o etiquetas. Revisa la ruta y los datos.")
+
+# Convertir a arrays
+images = np.array(images) / 255.0  # Normalizar
+labels = np.array(labels)
+
+# Codificar etiquetas
+label_encoder = LabelEncoder()
+encoded_labels = label_encoder.fit_transform(labels)
+
+# 3. Dividir datos para entrenamiento y prueba
+X_train, X_test, y_train, y_test = train_test_split(images, encoded_labels, test_size=0.2, random_state=42)
+
+# 4. Crear el Modelo CNN
+model = models.Sequential([
+    layers.Conv2D(32, (3, 3), activation='relu', input_shape=(128, 128, 3)),
+    layers.MaxPooling2D((2, 2)),
+    layers.Conv2D(64, (3, 3), activation='relu'),
+    layers.MaxPooling2D((2, 2)),
+    layers.Conv2D(128, (3, 3), activation='relu'),
+    layers.MaxPooling2D((2, 2)),
+    layers.Flatten(),
+    layers.Dense(128, activation='relu'),
+    layers.Dense(len(label_encoder.classes_), activation='softmax')
+])
+
+# Compilar el modelo
+model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+
+# 5. Entrenar el modelo
+history = model.fit(X_train, y_train, epochs=10, validation_data=(X_test, y_test))
+
+# Guardar el modelo
+model.save("pokemon_classifier.h5")
+
+# 6. Predicción de prueba
+def predict_pokemon(image_path):
+    try:
+        img = cv2.imread(image_path)
+        if img is not None:
+            img = cv2.resize(img, img_size) / 255.0
+            img = np.expand_dims(img, axis=0)
+            prediction = model.predict(img)
+            predicted_class = label_encoder.inverse_transform([np.argmax(prediction)])[0]
+            return predicted_class
+        else:
+            raise ValueError(f"No se pudo cargar la imagen para predecir: {image_path}")
+    except Exception as e:
+        print(f"Error al predecir la imagen {image_path}: {e}")
+        return None
+
+# Ejemplo
+test_image = get_relative_path('Pokemon images DB/Abomasnow/Generation 4/Diamond Pearl/Back/Abomasnow_2_2.png')
+predicted_pokemon = predict_pokemon(test_image)
+if predicted_pokemon:
+    print(f"El Pokémon predicho es: {predicted_pokemon}")
+else:
+    print("No se pudo predecir el Pokémon.")

@@ -1,0 +1,42 @@
+import pandas as pd
+import numpy
+import matplotlib.pyplot as plt
+import seaborn as sns
+import warnings
+warnings.filterwarnings("ignore")
+
+df = pd.read_csv(r"C:\Users\Adrián\OneDrive\Documentos\VisualsProyects\Pokemon-Actividad-IA\pokemonDB_dataset.csv")
+
+df.info()
+
+df.describe()
+
+df.isnull().sum()
+
+base_stats_cols = ['HP Base', 'Attack Base', 'Defense Base', 'Special Attack Base', 'Special Defense Base', 'Speed Base']
+
+fig, axes = plt.subplots(nrows=2, ncols=3, figsize=(18, 10))
+axes = axes.flatten()
+for i, col in enumerate(base_stats_cols):
+    ax = axes[i]
+    ax.hist(df[col], bins=20, color='skyblue', edgecolor='black')
+    ax.set_title(col)
+    ax.set_xlabel('Value')
+    ax.set_ylabel('Frequency')
+
+plt.tight_layout()
+plt.show()
+
+
+sns.pairplot(df[base_stats_cols])
+plt.show()
+
+correlation_matrix = df[base_stats_cols].corr()
+plt.figure(figsize=(10, 8))
+sns.heatmap(correlation_matrix, annot=True, cmap='coolwarm', fmt=".2f", linewidths=0.5)
+plt.title('Correlation Matrix of Base Stats')
+plt.show()
+
+unique_pokemon_count = df['Pokemon'].value_counts()
+for pokemon, count in unique_pokemon_count.items():
+    print(f'{pokemon}: {count}')

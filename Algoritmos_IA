@@ -1,0 +1,233 @@
+import os
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split, cross_val_score, KFold
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.svm import SVC
+from sklearn.metrics import classification_report, confusion_matrix, mean_squared_error
+from sklearn.preprocessing import StandardScaler
+from xgboost import XGBClassifier
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Dropout
+from tensorflow.keras.callbacks import EarlyStopping
+from tensorflow.keras.utils import to_categorical
+from sklearn.linear_model import LinearRegression
+from sklearn.naive_bayes import GaussianNB
+from sklearn.model_selection import LeaveOneOut
+
+# 1. Leer y explorar el CSV de los pokemon (pikachu farlopero)
+def load_and_explore_data():
+    # Cargar el CSV
+    csv_path = os.path.join(os.path.dirname(__file__), 'pokemonDB_dataset.csv')
+    if not os.path.exists(csv_path):
+        raise FileNotFoundError(f"No se encontró el archivo CSV en {csv_path}")
+    
+    pokemon_data = pd.read_csv(csv_path)
+    print("Datos cargados con éxito:")
+    print(pokemon_data.head())
+
+    # Visualizar la distribución de los tipos de Pokémon
+    print("\nDistribución de Tipos de Pokémon:")
+    print(pokemon_data['Type'].value_counts())
+    sns.countplot(y=pokemon_data['Type'], palette="viridis")
+    plt.title("Distribución de tipos de Pokémon")
+    plt.show()
+
+    # Correlación entre las estadísticas
+    stats = ['HP Base', 'Attack Base', 'Defense Base', 'Speed Base']
+    correlation_matrix = pokemon_data[stats].corr()
+    sns.heatmap(correlation_matrix, annot=True, cmap="coolwarm")
+    plt.title("Correlación entre estadísticas base")
+    plt.show()
+
+    return pokemon_data
+
+# 2. Preprocesar los datos para que no explote el ordenador
+def preprocess_data(pokemon_data):
+    # Seleccionar variables de entrada y salida
+    X = pokemon_data[['HP Base', 'Attack Base', 'Defense Base', 'Speed Base']]
+    y = pokemon_data['Type']
+    
+    # Codificar clases
+    y_encoded, unique_classes = pd.factorize(pokemon_data['Type'])
+    
+    # Filtrar clases con menos de un mínimo de ejemplos (opcional)
+    min_samples = 5  # Número mínimo de ejemplos por clase
+    valid_classes = pokemon_data['Type'].value_counts()[pokemon_data['Type'].value_counts() >= min_samples].index
+    filtered_data = pokemon_data[pokemon_data['Type'].isin(valid_classes)]
+
+    # Actualizar las variables después de filtrar
+    X = filtered_data[['HP Base', 'Attack Base', 'Defense Base', 'Speed Base']]
+    y_encoded, unique_classes = pd.factorize(filtered_data['Type'])
+
+    # Dividir datos con estratificación
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y_encoded, test_size=0.2, random_state=42, stratify=y_encoded
+    )
+
+    # Escalar las características
+    scaler = StandardScaler()
+    X_train = scaler.fit_transform(X_train)
+    X_test = scaler.transform(X_test)
+    
+    return X_train, X_test, y_train, y_test, pd.Series(unique_classes)
+
+# 3. Algoritmo Validación cruzada (K-Fold)
+def cross_validate_models(X, y):
+    models = {
+        "Regresión Logística": LogisticRegression(max_iter=500, penalty='l2'),
+        "Random Forest": RandomForestClassifier(n_estimators=100, max_depth=10),  # Regularización por max_depth
+        "K-Nearest Neighbors": KNeighborsClassifier(n_neighbors=5),
+        "SVM (Kernel Lineal)": SVC(kernel='linear', C=1),  # Regularización por parámetro C
+    }
+    
+    kfold = KFold(n_splits=5, shuffle=True, random_state=42)
+    for model_name, model in models.items():
+        scores = cross_val_score(model, X, y, cv=kfold, scoring='accuracy')
+        print(f"\nDesempeño promedio de {model_name} (5-Fold): {np.mean(scores):.2f} ± {np.std(scores):.2f}")
+
+# 4. Algoritmo Red Neuronal para Clasificación con Early Stopping y Dropout
+def build_and_evaluate_nn(X_train, X_test, y_train, y_test, y_classes):
+    y_train_onehot = to_categorical(y_train, num_classes=len(y_classes))
+    y_test_onehot = to_categorical(y_test, num_classes=len(y_classes))
+    
+    model = Sequential()
+    model.add(Dense(128, input_dim=X_train.shape[1], activation='relu'))
+    model.add(Dropout(0.2))  # Regularización con Dropout
+    model.add(Dense(64, activation='relu'))
+    model.add(Dropout(0.2))
+    model.add(Dense(32, activation='relu'))
+    model.add(Dense(len(y_classes), activation='softmax'))  # Salida con softmax
+    
+    model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+    
+    # Usamos EarlyStopping para evitar el jodido sobreajuste
+    early_stopping = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
+    
+    model.fit(X_train, y_train_onehot, epochs=100, batch_size=32, validation_data=(X_test, y_test_onehot), callbacks=[early_stopping])
+    
+    loss, accuracy = model.evaluate(X_test, y_test_onehot)
+    print(f'Precisión en conjunto de test: {accuracy:.4f}')
+    
+    y_pred = np.argmax(model.predict(X_test), axis=1)
+    print(classification_report(y_test, y_pred, target_names=y_classes))
+    
+    # Matriz de confusión
+    cm = confusion_matrix(y_test, y_pred)
+    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=y_classes, yticklabels=y_classes)
+    plt.title("Matriz de Confusión: Red Neuronal")
+    plt.xlabel("Clases Predichas")
+    plt.ylabel("Clases Reales")
+    plt.show()
+
+#Algoritmo Regresion Lineal
+def train_linear_regression(X_train, X_test, y_train, y_test):
+    print("\nEntrenando Regresión Lineal...")
+    linear_model = LinearRegression()
+    linear_model.fit(X_train, y_train)
+    y_pred = linear_model.predict(X_test)
+    
+    # Convertir las predicciones a clases (redondear)
+    y_pred_classes = np.rint(y_pred).astype(int)
+    
+    # Reporte de clasificación
+    print("\nReporte de clasificación para Regresión Lineal:")
+    print(classification_report(y_test, y_pred_classes))
+    
+    # Matriz de confusión
+    cm = confusion_matrix(y_test, y_pred_classes)
+    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues")
+    plt.title("Matriz de Confusión: Regresión Lineal")
+    plt.xlabel("Clases Predichas")
+    plt.ylabel("Clases Reales")
+    plt.show()
+
+#Algoritmo Naive Bayes
+def train_naive_bayes(X_train, X_test, y_train, y_test):
+    print("\nEntrenando Naive Bayes...")
+    nb_model = GaussianNB()
+    nb_model.fit(X_train, y_train)
+    y_pred = nb_model.predict(X_test)
+    
+    # Reporte de clasificación
+    print("\nReporte de clasificación para Naive Bayes:")
+    print(classification_report(y_test, y_pred))
+    
+    # Matriz de confusión
+    cm = confusion_matrix(y_test, y_pred)
+    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues")
+    plt.title("Matriz de Confusión: Naive Bayes")
+    plt.xlabel("Clases Predichas")
+    plt.ylabel("Clases Reales")
+    plt.show()
+
+#Algoritmo Leave One Out
+def leave_one_out_validation(X, y):
+    print("\nValidación Leave-One-Out...")
+    loo = LeaveOneOut()
+    model = LogisticRegression(max_iter=500, penalty='l2')  # Usaremos Regresión Logística como ejemplo
+    
+    accuracies = []
+    for train_index, test_index in loo.split(X):
+        X_train, X_test = X[train_index], X[test_index]
+        y_train, y_test = y[train_index], y[test_index]
+        model.fit(X_train, y_train)
+        accuracy = model.score(X_test, y_test)
+        accuracies.append(accuracy)
+    
+    print(f"Precisión promedio Leave-One-Out: {np.mean(accuracies):.2f}")
+
+# 5. Entrenar y evaluar modelos de ML
+def train_and_evaluate_models(X_train, X_test, y_train, y_test, y_classes):
+    models = {
+        "Regresión Logística": LogisticRegression(max_iter=500, penalty='l2'),
+        "Random Forest": RandomForestClassifier(n_estimators=100, max_depth=10), 
+        "K-Nearest Neighbors": KNeighborsClassifier(n_neighbors=5),
+        "SVM (Kernel Lineal)": SVC(kernel='linear', C=1),
+    }
+
+    for model_name, model in models.items():
+        print(f"\nEntrenando {model_name}...")
+        model.fit(X_train, y_train)
+        y_pred = model.predict(X_test)
+
+        print(f"\nReporte de clasificación para {model_name}:")
+        print(classification_report(y_test, y_pred, target_names=y_classes))
+
+        cm = confusion_matrix(y_test, y_pred)
+        sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=y_classes, yticklabels=y_classes)
+        plt.title(f"Matriz de Confusión: {model_name}")
+        plt.xlabel("Clases Predichas")
+        plt.ylabel("Clases Reales")
+        plt.show()
+
+    # Ajustar XGBoost
+    print("\nEntrenando XGBoost...")
+    xgb_model = XGBClassifier(eval_metric='mlogloss', use_label_encoder=False)
+    xgb_model.fit(X_train, y_train)
+    y_pred = xgb_model.predict(X_test)
+    print("\nReporte de clasificación para XGBoost:")
+    print(classification_report(y_test, y_pred, target_names=y_classes))
+
+    # Algoritmo Regresión Lineal
+    train_linear_regression(X_train, X_test, y_train, y_test)  
+    # Algoritmo Naive Bayes
+    train_naive_bayes(X_train, X_test, y_train, y_test)        
+    # Validación Leave-One-Out
+    leave_one_out_validation(X_train, y_train)
+
+
+# Ejecutar flujo de trabajo completo
+def run():
+    pokemon_data = load_and_explore_data()
+    X_train, X_test, y_train, y_test, y_classes = preprocess_data(pokemon_data)
+    cross_validate_models(X_train, y_train)
+    train_and_evaluate_models(X_train, X_test, y_train, y_test, y_classes)
+    build_and_evaluate_nn(X_train, X_test, y_train, y_test, y_classes)
+
+if __name__ == "__main__":
+    run()
