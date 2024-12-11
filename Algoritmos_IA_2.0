@@ -173,6 +173,13 @@ def train_models(X_train, X_test, y_train, y_test, classes):
         plt.title(f"Matriz de Confusión: {name}")
         plt.show()
 
+        # Mostrar ejemplos concretos de predicciones
+        print("\n--- Ejemplos de predicciones ---")
+        test_examples = pd.DataFrame(X_test[:5], columns=['HP Base', 'Attack Base', 'Defense Base', 'Speed Base', 'Special Attack Base', 'Special Defense Base'])
+        test_examples['Predicción'] = [classes[label] for label in y_pred[:5]]
+        test_examples['Etiqueta Real'] = [classes[label] for label in y_test[:5]]
+        print(test_examples)
+
         # Validación cruzada K-Fold
         print(f"Validación K-Fold para {name}:")
         cross_validation_scores(model, X_train, y_train)
@@ -184,6 +191,7 @@ def train_models(X_train, X_test, y_train, y_test, classes):
 
     print("\n--- Graficando los Mejores Modelos ---")
     plot_top_models(model_results)
+
 
 # 8. Graficar los tres mejores modelos
 def plot_top_models(results):
