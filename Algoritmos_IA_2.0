@@ -1,0 +1,215 @@
+import os
+# Desactivar oneDNN
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split, cross_val_score, KFold, StratifiedKFold, GridSearchCV
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.svm import SVC
+from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score
+from sklearn.preprocessing import StandardScaler
+from sklearn.naive_bayes import GaussianNB
+from xgboost import XGBClassifier
+from imblearn.over_sampling import SMOTE
+
+# 1. Función para cargar y explorar datos
+def load_data(csv_path):
+    if not os.path.exists(csv_path):
+        raise FileNotFoundError(f"Archivo no encontrado en la ruta: {csv_path}")
+    data = pd.read_csv(csv_path)
+    print("Datos cargados con éxito:")
+    print(data.head())
+    return data
+
+# 2. Agrupar tipos de Pokémon en categorías generales
+def group_pokemon_types(data):
+    categories = {
+        "Elementales": ["Agua", "Fuego", "Eléctrico", "Hielo", "Planta", "Tierra", "Roca"],
+        "Místicos": ["Psíquico", "Dragón", "Fantasma", "Siniestro", "Hada", "Acero"],
+        "Animales": ["Normal", "Lucha", "Volador", "Veneno", "Insecto"],
+    }
+    translation_dict = {
+        "Water": "Agua", "Fire": "Fuego", "Electric": "Eléctrico", "Ice": "Hielo",
+        "Grass": "Planta", "Ground": "Tierra", "Poison": "Veneno", "Steel": "Acero",
+        "Rock": "Roca", "Dragon": "Dragón", "Ghost": "Fantasma", "Normal": "Normal",
+        "Fighting": "Lucha", "Flying": "Volador", "Psychic": "Psíquico", "Bug": "Insecto",
+        "Dark": "Siniestro", "Fairy": "Hada"
+    }
+
+    def map_types(type_str):
+        if not type_str:
+            return "Desconocido"
+        translated = [translation_dict.get(t.strip(), t.strip()) for t in type_str.split(", ")]
+        for category, types in categories.items():
+            if any(t in translated for t in types):
+                return category
+        return "Desconocido"
+
+    data['Grouped_Type'] = data['Type'].apply(map_types)
+    print("\nDistribución de Tipos Agrupados:")
+    print(data['Grouped_Type'].value_counts())
+    return data
+
+# 3. Preprocesar datos
+def preprocess_data(data, min_samples=5):
+    X = data[['HP Base', 'Attack Base', 'Defense Base', 'Speed Base', 'Special Attack Base', 'Special Defense Base']]
+    y = data['Grouped_Type']
+
+    valid_classes = y.value_counts()[y.value_counts() >= min_samples].index
+    data = data[data['Grouped_Type'].isin(valid_classes)]
+
+    X = data[['HP Base', 'Attack Base', 'Defense Base', 'Speed Base', 'Special Attack Base', 'Special Defense Base']]
+    y, classes = pd.factorize(data['Grouped_Type'])
+
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+
+    smote = SMOTE(random_state=42)
+    X_resampled, y_resampled = smote.fit_resample(X_scaled, y)
+
+    X_train, X_test, y_train, y_test = train_test_split(X_resampled, y_resampled, test_size=0.2, stratify=y_resampled, random_state=42)
+
+    return X_train, X_test, y_train, y_test, classes
+
+# 4. Función para mostrar la matriz de correlación por categorías y tipos
+def plot_correlation_with_categories(data):
+    # Primero, mostramos la correlación general de los datos numéricos
+    numeric_data = data.select_dtypes(include=[np.number])
+    if numeric_data.empty:
+        print("No hay datos numéricos para mostrar la matriz de correlación.")
+    else:
+        plt.figure(figsize=(8, 6))
+        sns.heatmap(numeric_data.corr(), annot=True, cmap="coolwarm")
+        plt.title("Matriz de Correlación General")
+        plt.show()
+    
+    # Correlación de tipos originales
+    # Suposición: 'Type' es la columna con los tipos de Pokémon, y contiene tipos múltiples separados por coma
+    # Primero, necesitamos separar esos tipos en columnas binarias (variables dummy) para cada tipo
+    types_dummies = data['Type'].str.get_dummies(sep=', ').add_prefix('Type_')
+    
+    # Ahora, podemos hacer una correlación entre estos tipos
+    types_dummies_corr = types_dummies.corr()
+    
+    # Graficamos la matriz de correlación de los tipos originales
+    plt.figure(figsize=(10, 8))
+    sns.heatmap(types_dummies_corr, annot=True, cmap="coolwarm")
+    plt.title("Matriz de Correlación de Tipos Originales")
+    plt.show()
+
+    # Generar la correlación para cada categoría de tipos
+    categories = {
+        "Elementales": ["Agua", "Fuego", "Eléctrico", "Hielo", "Planta", "Tierra", "Roca"],
+        "Místicos": ["Psíquico", "Dragón", "Fantasma", "Siniestro", "Hada", "Acero"],
+        "Animales": ["Normal", "Lucha", "Volador", "Veneno", "Insecto"],
+    }
+    
+    # Filtrar los datos por cada categoría y calcular la correlación
+    for category, types in categories.items():
+        # Filtramos los datos que corresponden a esta categoría
+        category_data = data[data['Grouped_Type'] == category]
+        
+        # Si hay datos para la categoría, calculamos y graficamos la correlación
+        if not category_data.empty:
+            category_numeric_data = category_data[['HP Base', 'Attack Base', 'Defense Base', 'Speed Base', 'Special Attack Base', 'Special Defense Base']]
+            plt.figure(figsize=(8, 6))
+            sns.heatmap(category_numeric_data.corr(), annot=True, cmap="coolwarm")
+            plt.title(f"Matriz de Correlación - {category}")
+            plt.show()
+        else:
+            print(f"No hay datos para la categoría {category}.")
+
+# 5. Validación cruzada
+
+def cross_validation_scores(model, X, y, n_splits=5):
+    kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
+    scores = cross_val_score(model, X, y, cv=kf)
+    print(f"Scores de validación cruzada (K-Fold): {scores}")
+    print(f"Precisión promedio: {scores.mean():.4f}")
+
+def leave_one_out_scores(model, X, y):
+    loo = StratifiedKFold(n_splits=len(y))  # Leave-One-Out simplificado con StratifiedKFold
+    scores = cross_val_score(model, X, y, cv=loo)
+    print(f"Precisión Leave-One-Out: {scores.mean():.4f}")
+
+# 6. Optimización de modelos con GridSearchCV
+def optimize_random_forest(X_train, y_train):
+    param_grid = {
+        'n_estimators': [100, 200, 500],
+        'max_depth': [10, 20, None],
+        'min_samples_split': [2, 5, 10]
+    }
+    grid = GridSearchCV(RandomForestClassifier(), param_grid, cv=5, scoring='accuracy')
+    grid.fit(X_train, y_train)
+    print("Mejores parámetros para Random Forest:", grid.best_params_)
+    return grid.best_estimator_
+
+# 7. Entrenar y evaluar modelos
+def train_models(X_train, X_test, y_train, y_test, classes):
+    model_results = {}
+    models = {
+        "Logística": LogisticRegression(max_iter=500),
+        "Random Forest": optimize_random_forest(X_train, y_train),
+        "KNN": KNeighborsClassifier(),
+        "SVM": SVC(probability=True),
+        "Naive Bayes": GaussianNB(),
+        "XGBoost": XGBClassifier(use_label_encoder=False, eval_metric='mlogloss'),
+        "Árbol de Decisión": DecisionTreeClassifier()
+    }
+    
+    for name, model in models.items():
+        print(f"\n{name}...")
+        model.fit(X_train, y_train)
+        y_pred = model.predict(X_test)
+        acc = np.mean(y_test == y_pred)
+        model_results[name] = acc
+        print(classification_report(y_test, y_pred, target_names=classes))
+        sns.heatmap(confusion_matrix(y_test, y_pred), annot=True, cmap="Blues", fmt="d", xticklabels=classes, yticklabels=classes)
+        plt.title(f"Matriz de Confusión: {name}")
+        plt.show()
+
+        # Validación cruzada K-Fold
+        print(f"Validación K-Fold para {name}:")
+        cross_validation_scores(model, X_train, y_train)
+
+        # Leave-One-Out
+        if len(X_train) <= 100:  # Límite para evitar largos tiempos de ejecución
+            print(f"Leave-One-Out para {name}:")
+            leave_one_out_scores(model, X_train, y_train)
+
+    print("\n--- Graficando los Mejores Modelos ---")
+    plot_top_models(model_results)
+
+# 8. Graficar los tres mejores modelos
+def plot_top_models(results):
+    sorted_results = sorted(results.items(), key=lambda x: x[1], reverse=True)[:3]
+    model_names = [name for name, _ in sorted_results]
+    accuracies = [accuracy for _, accuracy in sorted_results]
+    plt.figure(figsize=(8, 6))
+    sns.barplot(x=model_names, y=accuracies, palette="viridis")
+    plt.title("Top 3 Modelos de Aprendizaje por Precisión")
+    plt.ylabel("Precisión")
+    plt.xlabel("Modelos")
+    plt.show()
+
+# 9. Flujo principal
+def main():
+    csv_path = 'pokemonDB_dataset.csv'
+    data = load_data(csv_path)
+    data = group_pokemon_types(data)
+
+    # Mostrar matrices de correlación para los tipos originales y agrupados
+    print("\n--- Matriz de Correlación de Tipos y Categorías ---")
+    plot_correlation_with_categories(data)
+
+    X_train, X_test, y_train, y_test, classes = preprocess_data(data)
+    print("\n--- Entrenamiento de Modelos ---")
+    train_models(X_train, X_test, y_train, y_test, classes)
+
+if __name__ == "__main__":
+    main()
