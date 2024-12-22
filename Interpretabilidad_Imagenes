@@ -1,0 +1,144 @@
+import os
+import tensorflow as tf
+from tensorflow.keras import layers, models
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+import numpy as np
+from tkinter import Tk, Label, Button, filedialog
+from PIL import Image, ImageTk
+
+# Definir las rutas de las carpetas
+base_dir = r"C:\ProjectVisuals\Pokemon-Actividad-IA"
+train_dir = os.path.join(base_dir, "train")
+validation_dir = os.path.join(base_dir, "validation")
+test_dir = os.path.join(base_dir, "test")
+
+# Parámetros de entrenamiento
+img_size = (150, 150)  # Tamaño de las imágenes
+batch_size = 32  # Tamaño del batch
+epochs = 10  # Número de épocas para entrenar
+
+# Función para entrenar el modelo
+def train_model():
+    # Preparar generadores de datos para imágenes
+    train_datagen = ImageDataGenerator(rescale=1.0 / 255, rotation_range=20, zoom_range=0.2, horizontal_flip=True)
+    validation_datagen = ImageDataGenerator(rescale=1.0 / 255)
+    test_datagen = ImageDataGenerator(rescale=1.0 / 255)
+
+    # Cargar imágenes desde las carpetas
+    train_generator = train_datagen.flow_from_directory(
+        train_dir,
+        target_size=img_size,
+        batch_size=batch_size,
+        class_mode='binary'
+    )
+    validation_generator = validation_datagen.flow_from_directory(
+        validation_dir,
+        target_size=img_size,
+        batch_size=batch_size,
+        class_mode='binary'
+    )
+    test_generator = test_datagen.flow_from_directory(
+        test_dir,
+        target_size=img_size,
+        batch_size=batch_size,
+        class_mode='binary'
+    )
+
+    # Crear el modelo
+    print("Creando modelo...")
+    model = models.Sequential([
+        layers.Conv2D(32, (3, 3), activation='relu', input_shape=(img_size[0], img_size[1], 3)),
+        layers.MaxPooling2D((2, 2)),
+        layers.Conv2D(64, (3, 3), activation='relu'),
+        layers.MaxPooling2D((2, 2)),
+        layers.Conv2D(128, (3, 3), activation='relu'),
+        layers.MaxPooling2D((2, 2)),
+        layers.Flatten(),
+        layers.Dense(128, activation='relu'),
+        layers.Dense(1, activation='sigmoid')  # Clasificación binaria
+    ])
+
+    # Compilar el modelo
+    model.compile(optimizer='adam',
+                  loss='binary_crossentropy',
+                  metrics=['accuracy'])
+
+    # Entrenar el modelo
+    print("Entrenando modelo...")
+    model.fit(train_generator, validation_data=validation_generator, epochs=epochs)
+
+    # Evaluar en el conjunto de test
+    print("Evaluando modelo...")
+    test_loss, test_acc = model.evaluate(test_generator)
+    print(f"Precisión en test: {test_acc * 100:.2f}%")
+
+    # Guardar el modelo
+    model.save("pokemon_model.h5")
+    print("Modelo guardado como 'pokemon_model.h5'.")
+
+    return model, train_generator.class_indices
+
+# Función para preprocesar una imagen individual
+def preprocess_image(image_path, img_size=(150, 150)):
+    img = tf.keras.utils.load_img(image_path, target_size=img_size)
+    img_array = tf.keras.utils.img_to_array(img)
+    img_array = np.expand_dims(img_array, axis=0)  # Expandir para incluir batch size
+    img_array /= 255.0  # Normalizar
+    return img_array
+
+# Función para seleccionar imagen y predecir
+def select_and_predict(model, class_indices):
+    global panel, result_label
+
+    # Abrir cuadro de diálogo para seleccionar imagen
+    file_path = filedialog.askopenfilename(filetypes=[("Image files", "*.jpg;*.jpeg;*.png")])
+    if not file_path:
+        return  # Si el usuario cancela, no hacer nada
+
+    # Preprocesar imagen
+    img_array = preprocess_image(file_path)
+
+    # Realizar predicción
+    prediction = model.predict(img_array)[0][0]
+    similarity = prediction * 100 if prediction > 0.5 else (1 - prediction) * 100
+    class_name = "Pikachu" if prediction > 0.5 else "Not Pikachu"
+
+    # Mostrar la imagen seleccionada
+    img = Image.open(file_path)
+    img = img.resize((200, 200))  # Redimensionar para la vista
+    img_tk = ImageTk.PhotoImage(img)
+
+    if panel is None:
+        panel = Label(root, image=img_tk)
+        panel.image = img_tk
+        panel.pack(pady=10)
+    else:
+        panel.configure(image=img_tk)
+        panel.image = img_tk
+
+    # Mostrar el resultado de la predicción
+    result_text = f"Clase: {class_name} | Probabilidad: {similarity:.2f}%"
+    result_label.config(text=result_text)
+
+# Entrenar el modelo y obtener clases
+model, class_indices = train_model()
+
+# Crear ventana principal
+root = Tk()
+root.title("Clasificador de Pikachu")
+root.geometry("400x400")
+
+# Etiquetas e interfaz
+title_label = Label(root, text="Clasificador de Pikachu", font=("Helvetica", 16))
+title_label.pack(pady=10)
+
+select_button = Button(root, text="Seleccionar imagen", command=lambda: select_and_predict(model, class_indices))
+select_button.pack(pady=10)
+
+result_label = Label(root, text="Clase: -- | Probabilidad: --", font=("Helvetica", 12))
+result_label.pack(pady=20)
+
+panel = None
+
+# Iniciar la aplicación
+root.mainloop()
